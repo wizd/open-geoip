@@ -13,8 +13,16 @@ type LoggerSection struct {
 	KeepHours uint   `json:"keepHours"`
 }
 
-func InitLog(l LoggerSection) {
+// stdoutBackend mirrors logger's unexported stdBackend so docker logs can see app output.
+type stdoutBackend struct{}
 
+func (b *stdoutBackend) Log(_ logger.Severity, msg []byte) {
+	_, _ = os.Stdout.Write(msg)
+}
+
+func (b *stdoutBackend) Close() {}
+
+func InitLog(l LoggerSection) {
 	lb, err := logger.NewFileBackend(l.Dir)
 	if err != nil {
 		fmt.Println("cannot init logger:", err)
@@ -23,5 +31,11 @@ func InitLog(l LoggerSection) {
 	lb.SetRotateByHour(true)
 	lb.SetKeepHours(l.KeepHours)
 
-	logger.SetLogging(l.Level, lb)
+	mb, err := logger.NewMultiBackend(lb, &stdoutBackend{})
+	if err != nil {
+		fmt.Println("cannot init logger multi backend:", err)
+		os.Exit(1)
+	}
+
+	logger.SetLogging(l.Level, mb)
 }

@@ -3,14 +3,12 @@ package models
 import (
 	"fmt"
 	"net"
-	"os"
 	"strings"
 	"sync"
 
 	"github.com/oschwald/geoip2-golang"
 
 	"github.com/ECNU/open-geoip/g"
-	"github.com/ECNU/open-geoip/util"
 	"github.com/ipipdotnet/ipdb-go"
 )
 
@@ -60,22 +58,9 @@ func InitReader() error {
 	}
 
 	if g.Config().Source.IPv4 == "maxmind" || g.Config().Source.IPv6 == "maxmind" {
-		dbFile := g.Config().DB.Maxmind
-		if g.Config().AutoDownload.Enabled {
-			dbPath, _, err := util.AutoDownloadMaxmindDatabase(g.Config().AutoDownload)
-			if err != nil {
-				// Fall back to an already-bundled / previously downloaded DB.
-				if dbFile == "" {
-					return err
-				}
-				if _, statErr := os.Stat(dbFile); statErr != nil {
-					return fmt.Errorf("auto download failed (%v) and local db missing: %w", err, statErr)
-				}
-			} else {
-				dbFile = dbPath
-			}
-		}
-		db, err := geoip2.Open(dbFile)
+		// Open local DB only; CDN sync runs in cron.SyncMaxmindDatabase after Listen
+		// so startup is not blocked by network (entrypoint seeds /data when missing).
+		db, err := geoip2.Open(g.Config().DB.Maxmind)
 		if err != nil {
 			return err
 		}

@@ -76,6 +76,8 @@ systemctl start open-geoip
 
 5. **持久化存储**：将卷挂载到容器内 `/data`；首次启动会把镜像内置库复制进去
 6. 对外端口由 `PORT` 控制（默认 `8080`）；健康检查路径为 `/version`
+7. **日志**：同时写入容器内 `logs/` 与 stdout，可用 `docker logs` / Coolify 日志排查
+8. **自动更新**：服务先用本地库 Listen，再在后台按 `AUTO_DOWNLOAD_INTERVAL` 从 CDN 校验并热加载，不阻塞健康检查
 
 #### 本地 Docker Compose
 
@@ -85,7 +87,7 @@ systemctl start open-geoip
 docker compose up -d --build
 ```
 
-访问 `http://localhost:$PORT`（默认 8080）。镜像已内置数据库；开启自动更新后会按 `AUTO_DOWNLOAD_INTERVAL` 从 CDN 校验并热加载。
+访问 `http://localhost:$PORT`（默认 8080）。镜像已内置数据库；开启自动更新后会在服务就绪后按 `AUTO_DOWNLOAD_INTERVAL` 从 CDN 校验并热加载。
 
 SSO / OAuth / Redis 限流等高级配置仍通过配置文件管理；可在 Coolify 用 File Mount 覆盖 `cfg.docker.json`。
 
@@ -93,7 +95,7 @@ SSO / OAuth / Redis 限流等高级配置仍通过配置文件管理；可在 Co
 #### GeoLite2-City（默认）
 默认从社区镜像 [wp-statistics/GeoLite2-City](https://github.com/wp-statistics/GeoLite2-City) 更新（CDN：`https://cdn.jsdelivr.net/npm/geolite2-city/GeoLite2-City.mmdb.gz`），**不需要** MaxMind License Key，可避开官方对 CN 账号的 City 库限制。
 
-启用 `autoDownload.enabled`（或环境变量 `AUTO_DOWNLOAD_ENABLED=true`）后，进程按 `interval` 定时同步，下载成功后自动热加载。可通过 `GEOLITE2_CITY_URL` 覆盖下载地址。
+启用 `autoDownload.enabled`（或环境变量 `AUTO_DOWNLOAD_ENABLED=true`）后，进程在 HTTP 就绪后按 `interval` 定时同步（启动时也会立即尝试一次），下载成功后自动热加载。可通过 `GEOLITE2_CITY_URL` 覆盖下载地址。启动阶段只加载本地库，CDN 不可达时不影响服务启动。
 
 
 ### 编译打包
