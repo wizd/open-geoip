@@ -28,10 +28,12 @@ COPY --from=builder /src/cfg.docker.json /app/cfg.docker.json
 
 USER appuser
 
+ENV PORT=8080
+
 EXPOSE 8080
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-	CMD wget -qO- http://127.0.0.1:8080/version || exit 1
+	CMD wget -qO- http://127.0.0.1:${PORT}/version || exit 1
 
 CMD ["./open-geoip", "-c", "cfg.docker.json"]

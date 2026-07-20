@@ -68,22 +68,24 @@ systemctl start open-geoip
 | `AUTO_DOWNLOAD_INTERVAL` | 否 | 自动更新间隔（小时），默认 `24` |
 | `AUTO_DOWNLOAD_TARGET_PATH` | 否 | 数据库目录，默认 `/data/` |
 | `AUTO_DOWNLOAD_TIMEOUT` | 否 | 下载超时（分钟），默认 `5` |
-| `HTTP_LISTEN` | 否 | 监听地址，默认 `0.0.0.0:8080` |
-| `PORT` | 否 | 若未设 `HTTP_LISTEN`，则监听 `0.0.0.0:$PORT` |
+| `PORT` | 否 | 服务监听与 compose 映射端口，默认 `8080`；未设 `HTTP_LISTEN` 时监听 `0.0.0.0:$PORT` |
+| `HTTP_LISTEN` | 否 | 完整监听地址（如 `0.0.0.0:9090`），设置后优先于 `PORT` |
 | `X_API_KEY` | 否 | OpenAPI 的 `X-API-KEY` |
 | `HTTP_TRUST_PROXY` | 否 | 信任的反向代理，逗号分隔；默认信任全部（适配 Coolify/Traefik） |
 
 4. **持久化存储**：将卷挂载到容器内 `/data`，用于保存 `GeoLite2-City.mmdb`，避免每次重启重复下载
-5. 对外暴露端口 `8080`；健康检查路径为 `/version`
+5. 对外端口由 `PORT` 控制（默认 `8080`）；健康检查路径为 `/version`
 
 #### 本地 Docker Compose
 
 ```bash
 export MAXMIND_LICENSE_KEY=your_license_key
+# 可选：自定义端口，例如 9090
+# export PORT=9090
 docker compose up -d --build
 ```
 
-访问 `http://localhost:8080`。首次启动会自动下载数据库（`start_period` 约 60 秒），之后按 `AUTO_DOWNLOAD_INTERVAL` 校验 checksum；有更新时热加载到内存，无需重启容器。
+访问 `http://localhost:$PORT`（默认 8080）。首次启动会自动下载数据库（`start_period` 约 60 秒），之后按 `AUTO_DOWNLOAD_INTERVAL` 校验 checksum；有更新时热加载到内存，无需重启容器。
 
 SSO / OAuth / Redis 限流等高级配置仍通过配置文件管理；可在 Coolify 用 File Mount 覆盖 `cfg.docker.json`。
 
