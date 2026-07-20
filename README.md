@@ -59,48 +59,41 @@ systemctl start open-geoip
 
 1. 新建资源，选择 **Dockerfile** 或 **Docker Compose**
 2. 连接本仓库，构建上下文为仓库根目录
-3. 在 Environment Variables 中配置（至少设置 License Key）：
+3. **无需 MaxMind License**：镜像构建时已从 [wp-statistics/GeoLite2-City](https://github.com/wp-statistics/GeoLite2-City)（jsDelivr CDN）打包 `GeoLite2-City.mmdb`；运行时也会从同一源自动更新
+4. 可选环境变量：
 
 | 环境变量 | 必填 | 说明 |
 |----------|------|------|
-| `MAXMIND_ACCOUNT_ID` | 是 | MaxMind Account ID（账号页面可见的数字 ID） |
-| `MAXMIND_LICENSE_KEY` | 是 | MaxMind License Key，用于自动下载 GeoLite2 |
-| `AUTO_DOWNLOAD_ENABLED` | 否 | 默认 `true`（镜像内已开启） |
+| `AUTO_DOWNLOAD_ENABLED` | 否 | 默认 `true`，从 CDN 自动更新数据库 |
 | `AUTO_DOWNLOAD_INTERVAL` | 否 | 自动更新间隔（小时），默认 `24` |
 | `AUTO_DOWNLOAD_TARGET_PATH` | 否 | 数据库目录，默认 `/data/` |
 | `AUTO_DOWNLOAD_TIMEOUT` | 否 | 下载超时（分钟），默认 `5` |
+| `GEOLITE2_CITY_URL` | 否 | 数据库下载地址，默认 jsDelivr CDN |
 | `PORT` | 否 | 服务监听与 compose 映射端口，默认 `8080`；未设 `HTTP_LISTEN` 时监听 `0.0.0.0:$PORT` |
 | `HTTP_LISTEN` | 否 | 完整监听地址（如 `0.0.0.0:9090`），设置后优先于 `PORT` |
 | `X_API_KEY` | 否 | OpenAPI 的 `X-API-KEY` |
 | `HTTP_TRUST_PROXY` | 否 | 信任的反向代理，逗号分隔；默认信任全部（适配 Coolify/Traefik） |
 
-4. **持久化存储**：将卷挂载到容器内 `/data`，用于保存 `GeoLite2-City.mmdb`，避免每次重启重复下载
-5. 对外端口由 `PORT` 控制（默认 `8080`）；健康检查路径为 `/version`
+5. **持久化存储**：将卷挂载到容器内 `/data`；首次启动会把镜像内置库复制进去
+6. 对外端口由 `PORT` 控制（默认 `8080`）；健康检查路径为 `/version`
 
 #### 本地 Docker Compose
 
 ```bash
-export MAXMIND_ACCOUNT_ID=your_account_id
-export MAXMIND_LICENSE_KEY=your_license_key
 # 可选：自定义端口，例如 9090
 # export PORT=9090
 docker compose up -d --build
 ```
 
-访问 `http://localhost:$PORT`（默认 8080）。首次启动会自动下载数据库（`start_period` 约 60 秒），之后按 `AUTO_DOWNLOAD_INTERVAL` 校验 checksum；有更新时热加载到内存，无需重启容器。
+访问 `http://localhost:$PORT`（默认 8080）。镜像已内置数据库；开启自动更新后会按 `AUTO_DOWNLOAD_INTERVAL` 从 CDN 校验并热加载。
 
 SSO / OAuth / Redis 限流等高级配置仍通过配置文件管理；可在 Coolify 用 File Mount 覆盖 `cfg.docker.json`。
 
 ### 数据库自动更新
-#### maxmind
-如果需要自动更新 `mmdb` 数据库，请[注册](https://www.maxmind.com/en/geolite2/signup) MaxMind 账号，并配置：
+#### GeoLite2-City（默认）
+默认从社区镜像 [wp-statistics/GeoLite2-City](https://github.com/wp-statistics/GeoLite2-City) 更新（CDN：`https://cdn.jsdelivr.net/npm/geolite2-city/GeoLite2-City.mmdb.gz`），**不需要** MaxMind License Key，可避开官方对 CN 账号的 City 库限制。
 
-- `MAXMIND_ACCOUNT_ID`（或 `autoDownload.maxmindAccountId`）：账号数字 ID
-- `MAXMIND_LICENSE_KEY`（或 `autoDownload.maxmindLicenseKey`）：[License Key](https://www.maxmind.com/en/accounts/current/license-key)
-
-启用 `autoDownload.enabled` 后，进程会按 `interval` 定时同步，下载成功后自动热加载，无需重启。
-
-> 若只配置了 License Key 而未配置 Account ID，会回退到旧版下载地址；新账号常见 `gzip: invalid header`，请同时配置 Account ID。
+启用 `autoDownload.enabled`（或环境变量 `AUTO_DOWNLOAD_ENABLED=true`）后，进程按 `interval` 定时同步，下载成功后自动热加载。可通过 `GEOLITE2_CITY_URL` 覆盖下载地址。
 
 
 ### 编译打包
@@ -149,8 +142,6 @@ chmod +x control
 	},
 	"autoDownload":{
 		"enabled":false,
-		"maxmindAccountId":"",
-		"maxmindLicenseKey":"",
 		"targetFilePath":"",
 		"timeout":3,
 		"interval":24
@@ -195,9 +186,7 @@ chmod +x control
 | source.ipv4                    | string | IPv4信息的来源，可配置为 [maxmind](https://www.maxmind.com)/[qqzengip](https://www.qqzeng.com/)/[ipdb](https://www.ipip.net/) |
 | source.ipv6                    | string | IPv6信息的来源，可配置为 [maxmind](https://www.maxmind.com)/[qqzengip](https://www.qqzeng.com/)/[ipdb](https://www.ipip.net/) |
 | autoDownload                   | object | 一个包含自动更新数据库的设置的部分                                                                                                   |
-| autoDownload.enabled           | bool   | 是否启用自动更新数据库                                                                                                         |
-| autoDownload.maxmindAccountId  | string | MaxMind Account ID，也可配置环境变量 `MAXMIND_ACCOUNT_ID`；与 License Key 一起用于官方下载鉴权                                      |
-| autoDownload.maxmindLicenseKey | string | MaxMind License Key，用于自动更新 `MaxMind GeoLite2` 数据库，也可以配置在环境变量 `MAXMIND_LICENSE_KEY` 中。如果都没有配置，那么 `maxmind` 的自动更新会报错  |
+| autoDownload.enabled           | bool   | 是否启用自动更新数据库（默认从 wp-statistics CDN 拉取 GeoLite2-City）                                                              |
 | autoDownload.targetFilePath    | string | 自动更新数据库的目标文件路径，如果不配置此参数，默认值是 `./`，自动更新数据库会下载到这个目录                                                                   |
 | autoDownload.timeout           | number | 自动更新数据库的超时时间，单位是 minute，如果不配置此参数，默认值是 3                                                                             |
 | autoDownload.interval          | number | 自动更新数据库的间隔时间，单位是 hour，如果不配置此参数，默认值是24                                                                               |
@@ -208,12 +197,11 @@ chmod +x control
 
 | 环境变量 | 覆盖配置项 |
 |----------|------------|
-| `MAXMIND_ACCOUNT_ID` | `autoDownload.maxmindAccountId` |
-| `MAXMIND_LICENSE_KEY` | `autoDownload.maxmindLicenseKey` |
 | `AUTO_DOWNLOAD_ENABLED` | `autoDownload.enabled`（`true`/`false`/`1`/`0`） |
 | `AUTO_DOWNLOAD_INTERVAL` | `autoDownload.interval` |
 | `AUTO_DOWNLOAD_TARGET_PATH` | `autoDownload.targetFilePath` |
 | `AUTO_DOWNLOAD_TIMEOUT` | `autoDownload.timeout` |
+| `GEOLITE2_CITY_URL` | 数据库下载 URL（默认 jsDelivr CDN） |
 | `HTTP_LISTEN` | `http.listen` |
 | `PORT` | 未设置 `HTTP_LISTEN` 时，等价于 `http.listen=0.0.0.0:$PORT` |
 | `X_API_KEY` | `http.x-api-key` |
@@ -377,6 +365,6 @@ ok  	github.com/ECNU/open-geoip	7.044s
 
 - `web` 服务 —— [gin](https://github.com/gin-gonic/gin) 
 - `maxmind` 解析 —— [geoip2-golang](https://github.com/oschwald/geoip2-golang)
-- `maxmind` 自动更新 —— MaxMind 官方下载接口
+- `GeoLite2-City` 自动更新 —— [wp-statistics/GeoLite2-City](https://github.com/wp-statistics/GeoLite2-City)
 - `ipdb` 解析 —— [ipdb-go](https://github.com/ipipdotnet/ipdb-go)
 - `qqzengip` 解析 —— [qqzeng-ip](https://https://github.com/zengzhan/qqzeng-ip)

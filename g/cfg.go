@@ -209,12 +209,6 @@ func ParseConfig(cfg string) {
 // applyEnvOverrides overlays Coolify-friendly environment variables onto config.
 // Env values take precedence over the config file.
 func applyEnvOverrides(c *GlobalConfig) {
-	if v := os.Getenv("MAXMIND_ACCOUNT_ID"); v != "" {
-		c.AutoDownload.MaxmindAccountID = v
-	}
-	if v := os.Getenv("MAXMIND_LICENSE_KEY"); v != "" {
-		c.AutoDownload.MaxmindLicenseKey = v
-	}
 	if v := os.Getenv("AUTO_DOWNLOAD_ENABLED"); v != "" {
 		c.AutoDownload.Enabled = parseEnvBool(v)
 	}

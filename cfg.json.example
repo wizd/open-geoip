@@ -29,8 +29,6 @@
 	},
 	"autoDownload": {
 		"enabled": false,
-		"maxmindAccountId": "",
-		"maxmindLicenseKey": "",
 		"targetFilePath": "",
 		"timeout": 3,
 		"interval": 24

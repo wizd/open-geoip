@@ -3,6 +3,7 @@ package models
 import (
 	"fmt"
 	"net"
+	"os"
 	"strings"
 	"sync"
 
@@ -59,24 +60,26 @@ func InitReader() error {
 	}
 
 	if g.Config().Source.IPv4 == "maxmind" || g.Config().Source.IPv6 == "maxmind" {
+		dbFile := g.Config().DB.Maxmind
 		if g.Config().AutoDownload.Enabled {
 			dbPath, _, err := util.AutoDownloadMaxmindDatabase(g.Config().AutoDownload)
 			if err != nil {
-				return err
+				// Fall back to an already-bundled / previously downloaded DB.
+				if dbFile == "" {
+					return err
+				}
+				if _, statErr := os.Stat(dbFile); statErr != nil {
+					return fmt.Errorf("auto download failed (%v) and local db missing: %w", err, statErr)
+				}
+			} else {
+				dbFile = dbPath
 			}
-			db, err := geoip2.Open(dbPath)
-			if err != nil {
-				return err
-			}
-			ipReader.MaxMindReader = db
-
-		} else {
-			db, err := geoip2.Open(g.Config().DB.Maxmind)
-			if err != nil {
-				return err
-			}
-			ipReader.MaxMindReader = db
 		}
+		db, err := geoip2.Open(dbFile)
+		if err != nil {
+			return err
+		}
+		ipReader.MaxMindReader = db
 	}
 
 	if g.Config().InternalDB.Enabled {

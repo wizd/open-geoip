@@ -5,15 +5,13 @@ services:
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     environment:
-      # Required: MaxMind credentials for GeoLite2 auto download
-      MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
-      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
-      # Optional overrides
       PORT: ${PORT:-8080}
+      # Auto-update GeoLite2-City from wp-statistics CDN (no MaxMind license needed)
       AUTO_DOWNLOAD_ENABLED: ${AUTO_DOWNLOAD_ENABLED:-true}
       AUTO_DOWNLOAD_INTERVAL: ${AUTO_DOWNLOAD_INTERVAL:-24}
       AUTO_DOWNLOAD_TARGET_PATH: ${AUTO_DOWNLOAD_TARGET_PATH:-/data/}
       AUTO_DOWNLOAD_TIMEOUT: ${AUTO_DOWNLOAD_TIMEOUT:-5}
+      GEOLITE2_CITY_URL: ${GEOLITE2_CITY_URL:-https://cdn.jsdelivr.net/npm/geolite2-city/GeoLite2-City.mmdb.gz}
       # Optional full listen addr; if empty, app listens on 0.0.0.0:$PORT
       HTTP_LISTEN: ${HTTP_LISTEN:-}
       X_API_KEY: ${X_API_KEY:-}
@@ -26,7 +24,7 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 30s
 
 volumes:
   open-geoip-data:

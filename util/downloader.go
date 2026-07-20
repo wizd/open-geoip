@@ -1,12 +1,12 @@
 package util
 
 import (
-	"archive/tar"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,32 +22,22 @@ const (
 	MaxmindDBFileName      = "GeoLite2-City.mmdb"
 	checksumExt            = ".sha256"
 
-	// MaxMind direct download permalinks (require Account ID + License Key via Basic Auth).
-	// See: https://dev.maxmind.com/geoip/updating-databases/
-	maxmindDownloadURL = "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz"
-	maxmindChecksumURL = "https://download.maxmind.com/geoip/databases/GeoLite2-City/download?suffix=tar.gz.sha256"
-
-	// Legacy URL kept as fallback when Account ID is not configured.
-	maxmindLegacyDownloadURL = "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&suffix=tar.gz"
-	maxmindLegacyChecksumURL = "https://download.maxmind.com/app/geoip_download?edition_id=GeoLite2-City&suffix=tar.gz.sha256"
+	// Community mirror of GeoLite2-City (auto-updated Tue/Fri).
+	// https://github.com/wp-statistics/GeoLite2-City
+	defaultGeoLite2CityURL = "https://cdn.jsdelivr.net/npm/geolite2-city/GeoLite2-City.mmdb.gz"
 )
 
+func geoLite2CityURL() string {
+	if v := os.Getenv("GEOLITE2_CITY_URL"); v != "" {
+		return v
+	}
+	return defaultGeoLite2CityURL
+}
+
 func AutoDownloadMaxmindDatabase(config g.AutoDownloadConfig) (dbPath string, updated bool, err error) {
-	if config.MaxmindLicenseKey == "" {
-		config.MaxmindLicenseKey = os.Getenv("MAXMIND_LICENSE_KEY")
-	}
-	if config.MaxmindAccountID == "" {
-		config.MaxmindAccountID = os.Getenv("MAXMIND_ACCOUNT_ID")
-	}
-
-	if config.MaxmindLicenseKey == "" {
-		return "", false, fmt.Errorf("MAXMIND_LICENSE_KEY is required for auto download")
-	}
-
 	if config.Timeout == 0 {
 		config.Timeout = DefaultDownloadTimeout
 	}
-
 	if config.TargetFilePath == "" {
 		config.TargetFilePath = DefaultTargetFilePath
 	}
@@ -62,18 +52,17 @@ func AutoDownloadMaxmindDatabase(config g.AutoDownloadConfig) (dbPath string, up
 	client := &http.Client{
 		Timeout: time.Duration(config.Timeout) * time.Minute,
 		Transport: &http.Transport{
-			// Keep raw .tar.gz body; do not auto-decompress Content-Encoding.
 			DisableCompression: true,
 		},
 	}
 
-	logger.Debug("Checking if the database needs updating")
+	downloadURL := geoLite2CityURL()
+	logger.Debug("Checking if the database needs updating from ", downloadURL)
 
-	remoteChecksum, err := fetchChecksum(client, config)
+	remoteChecksum, err := fetchRemoteChecksum(client, downloadURL)
 	if err != nil {
 		return dbPath, false, err
 	}
-	remoteChecksum = strings.TrimSpace(remoteChecksum)
 
 	localChecksum, err := readLocalChecksum(dbPath, checksumPath)
 	if err != nil {
@@ -88,9 +77,9 @@ func AutoDownloadMaxmindDatabase(config g.AutoDownloadConfig) (dbPath string, up
 		return dbPath, false, nil
 	}
 
-	logger.Info("Database not found or outdated, downloading")
+	logger.Info("Database not found or outdated, downloading from ", downloadURL)
 
-	if err := downloadAndExtractMMDB(client, config, dbPath); err != nil {
+	if err := downloadAndGunzip(client, downloadURL, dbPath); err != nil {
 		return dbPath, false, err
 	}
 
@@ -119,19 +108,39 @@ func readLocalChecksum(dbPath, checksumPath string) (string, error) {
 	return strings.TrimSpace(string(data)), nil
 }
 
-func fetchChecksum(client *http.Client, config g.AutoDownloadConfig) (string, error) {
-	body, err := doMaxmindGET(client, config, maxmindChecksumURL, maxmindLegacyChecksumURL)
+func fetchRemoteChecksum(client *http.Client, downloadURL string) (string, error) {
+	req, err := http.NewRequest(http.MethodHead, downloadURL, nil)
+	if err != nil {
+		return "", err
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("fetch remote checksum: %w", err)
 	}
-	return string(body), nil
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("fetch remote checksum: HTTP %d", resp.StatusCode)
+	}
+
+	// Prefer ETag; fall back to Last-Modified + Content-Length.
+	if etag := strings.TrimSpace(resp.Header.Get("ETag")); etag != "" {
+		return etag, nil
+	}
+	lm := strings.TrimSpace(resp.Header.Get("Last-Modified"))
+	cl := strings.TrimSpace(resp.Header.Get("Content-Length"))
+	if lm != "" || cl != "" {
+		return lm + "|" + cl, nil
+	}
+	return "", fmt.Errorf("fetch remote checksum: no ETag or Last-Modified on %s", downloadURL)
 }
 
-func downloadAndExtractMMDB(client *http.Client, config g.AutoDownloadConfig, dbPath string) error {
-	req, err := newMaxmindRequest(config, maxmindDownloadURL, maxmindLegacyDownloadURL)
+func downloadAndGunzip(client *http.Client, downloadURL, dbPath string) error {
+	req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return err
 	}
+	req.Header.Set("Accept-Encoding", "identity")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -139,124 +148,41 @@ func downloadAndExtractMMDB(client *http.Client, config g.AutoDownloadConfig, db
 	}
 	defer resp.Body.Close()
 
-	if err := checkMaxmindStatus(resp); err != nil {
-		return err
+	if resp.StatusCode != http.StatusOK {
+		snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
+		return fmt.Errorf("download failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(snippet)))
 	}
 
-	gz, err := gzip.NewReader(resp.Body)
+	hasher := sha256.New()
+	body := io.TeeReader(resp.Body, hasher)
+
+	gz, err := gzip.NewReader(body)
 	if err != nil {
-		return fmt.Errorf("gzip: invalid header (response is not a GeoLite2 archive; check MAXMIND_ACCOUNT_ID / MAXMIND_LICENSE_KEY): %w", err)
+		return fmt.Errorf("gzip: invalid header from %s: %w", downloadURL, err)
 	}
 	defer gz.Close()
 
-	tr := tar.NewReader(gz)
 	tmpPath := dbPath + ".tmp"
-	found := false
-
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read tar archive: %w", err)
-		}
-		if hdr.Typeflag != tar.TypeReg || !strings.HasSuffix(hdr.Name, ".mmdb") {
-			continue
-		}
-
-		out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(out, tr); err != nil {
-			out.Close()
-			os.Remove(tmpPath)
-			return fmt.Errorf("write mmdb: %w", err)
-		}
-		if err := out.Close(); err != nil {
-			os.Remove(tmpPath)
-			return err
-		}
-		found = true
-		break
+	out, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
 	}
 
-	if !found {
-		return fmt.Errorf("downloaded archive does not contain a .mmdb file")
+	if _, err := io.Copy(out, gz); err != nil {
+		out.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("write mmdb: %w", err)
 	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+
+	_ = hex.EncodeToString(hasher.Sum(nil)) // consumed; integrity via successful gunzip + size
 
 	if err := os.Rename(tmpPath, dbPath); err != nil {
 		os.Remove(tmpPath)
 		return err
 	}
 	return nil
-}
-
-func doMaxmindGET(client *http.Client, config g.AutoDownloadConfig, modernURL, legacyURL string) ([]byte, error) {
-	req, err := newMaxmindRequest(config, modernURL, legacyURL)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if err := checkMaxmindStatus(resp); err != nil {
-		return nil, err
-	}
-
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-}
-
-func newMaxmindRequest(config g.AutoDownloadConfig, modernURL, legacyURL string) (*http.Request, error) {
-	var (
-		rawURL string
-		req    *http.Request
-		err    error
-	)
-
-	if config.MaxmindAccountID != "" {
-		rawURL = modernURL
-		req, err = http.NewRequest(http.MethodGet, rawURL, nil)
-		if err != nil {
-			return nil, err
-		}
-		req.SetBasicAuth(config.MaxmindAccountID, config.MaxmindLicenseKey)
-	} else {
-		u, parseErr := url.Parse(legacyURL)
-		if parseErr != nil {
-			return nil, parseErr
-		}
-		q := u.Query()
-		q.Set("license_key", config.MaxmindLicenseKey)
-		u.RawQuery = q.Encode()
-		rawURL = u.String()
-		req, err = http.NewRequest(http.MethodGet, rawURL, nil)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	// Prevent transport from auto-decompressing; MaxMind body is already a .tar.gz payload.
-	req.Header.Set("Accept-Encoding", "identity")
-	return req, nil
-}
-
-func checkMaxmindStatus(resp *http.Response) error {
-	if resp.StatusCode == http.StatusOK {
-		return nil
-	}
-
-	snippet, _ := io.ReadAll(io.LimitReader(resp.Body, 256))
-	msg := strings.TrimSpace(string(snippet))
-	switch resp.StatusCode {
-	case http.StatusUnauthorized, http.StatusForbidden:
-		return fmt.Errorf("maxmind auth failed (HTTP %d): set valid MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY; body=%q", resp.StatusCode, msg)
-	default:
-		return fmt.Errorf("maxmind request failed (HTTP %d): %s", resp.StatusCode, msg)
-	}
 }
