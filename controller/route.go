@@ -18,9 +18,8 @@ func InitGin(listen string) (httpServer *http.Server) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 	r := gin.New()
-	if g.Config().Logger.Level == "DEBUG" {
-		r.Use(gin.Logger())
-	}
+	// Always log requests to gin.DefaultWriter (stdout) so docker logs / Coolify see traffic.
+	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
 	r.SetTrustedProxies(g.Config().Http.TrustProxy)

@@ -15,6 +15,7 @@ import (
 	"github.com/ECNU/open-geoip/cron"
 	"github.com/ECNU/open-geoip/g"
 	"github.com/ECNU/open-geoip/models"
+	"github.com/toolkits/pkg/logger"
 )
 
 func main() {
@@ -35,6 +36,12 @@ func main() {
 	}
 
 	g.ParseConfig(*cfg)
+	g.InitLog(g.Config().Logger)
+	log.SetOutput(os.Stdout)
+
+	logger.Infof("open-geoip %s starting, listen=%s autoDownload=%v",
+		g.VERSION, g.Config().Http.Listen, g.Config().AutoDownload.Enabled)
+
 	// init redis pool only ratelimit enbaled
 	if g.Config().RateLimit.Enabled {
 		g.InitRedisConnPool()
@@ -47,17 +54,17 @@ func main() {
 	}
 
 	srv := controller.InitGin(g.Config().Http.Listen)
-	g.InitLog(g.Config().Logger)
 
 	err := models.InitReader()
 	if err != nil {
-		log.Fatalf("load geo db failed, %v", err)
+		logger.Fatalf("load geo db failed, %v", err)
 	}
+	logger.Infof("geo database loaded from %s", g.Config().DB.Maxmind)
 
 	go func() {
-		// service connections
+		logger.Infof("http server listening on %s", g.Config().Http.Listen)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("listen: %s", err)
+			logger.Fatalf("listen: %s", err)
 		}
 	}()
 
@@ -68,11 +75,11 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	<-quit
-	log.Println("Shutdown Server ...")
+	logger.Info("Shutdown Server ...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatalf("Server Shutdown: %v", err)
+		logger.Fatalf("Server Shutdown: %v", err)
 	}
-	log.Println("Server exit")
+	logger.Info("Server exit")
 }

@@ -225,10 +225,17 @@ func applyEnvOverrides(c *GlobalConfig) {
 			c.AutoDownload.Timeout = n
 		}
 	}
-	if v := os.Getenv("HTTP_LISTEN"); v != "" {
+	// Coolify always injects PORT to match the published container port.
+	// Prefer PORT over HTTP_LISTEN so a stale HTTP_LISTEN=0.0.0.0:8080 cannot
+	// override PORT=5030 and leave the mapped port with no listener.
+	if v := os.Getenv("PORT"); v != "" {
+		host := os.Getenv("HOST")
+		if host == "" {
+			host = "0.0.0.0"
+		}
+		c.Http.Listen = host + ":" + v
+	} else if v := os.Getenv("HTTP_LISTEN"); v != "" {
 		c.Http.Listen = v
-	} else if v := os.Getenv("PORT"); v != "" {
-		c.Http.Listen = "0.0.0.0:" + v
 	}
 	if v := os.Getenv("X_API_KEY"); v != "" {
 		c.Http.XAPIKey = v

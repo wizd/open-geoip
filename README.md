@@ -69,14 +69,14 @@ systemctl start open-geoip
 | `AUTO_DOWNLOAD_TARGET_PATH` | 否 | 数据库目录，默认 `/data/` |
 | `AUTO_DOWNLOAD_TIMEOUT` | 否 | 下载超时（分钟），默认 `5` |
 | `GEOLITE2_CITY_URL` | 否 | 数据库下载地址，默认 jsDelivr CDN |
-| `PORT` | 否 | 服务监听与 compose 映射端口，默认 `8080`；未设 `HTTP_LISTEN` 时监听 `0.0.0.0:$PORT` |
-| `HTTP_LISTEN` | 否 | 完整监听地址（如 `0.0.0.0:9090`），设置后优先于 `PORT` |
+| `PORT` | 否 | 服务监听与 compose/Coolify 映射端口，默认 `8080`；**有 `PORT` 时优先**，监听 `$HOST:$PORT`（`HOST` 默认 `0.0.0.0`） |
+| `HTTP_LISTEN` | 否 | 完整监听地址（如 `0.0.0.0:9090`）；仅在未设置 `PORT` 时生效 |
 | `X_API_KEY` | 否 | OpenAPI 的 `X-API-KEY` |
 | `HTTP_TRUST_PROXY` | 否 | 信任的反向代理，逗号分隔；默认信任全部（适配 Coolify/Traefik） |
 
 5. **持久化存储**：将卷挂载到容器内 `/data`；首次启动会把镜像内置库复制进去
-6. 对外端口由 `PORT` 控制（默认 `8080`）；健康检查路径为 `/version`
-7. **日志**：同时写入容器内 `logs/` 与 stdout，可用 `docker logs` / Coolify 日志排查
+6. 对外端口由 `PORT` 控制（默认 `8080`）；Coolify 请保证 **Ports Exposes 与 `PORT` 一致**，不要用过期的 `HTTP_LISTEN=0.0.0.0:8080` 覆盖；健康检查路径为 `/version`
+7. **日志**：启动信息与 HTTP 访问日志写到 stdout，可用 `docker logs` / Coolify 日志排查
 8. **自动更新**：服务先用本地库 Listen，再在后台按 `AUTO_DOWNLOAD_INTERVAL` 从 CDN 校验并热加载，不阻塞健康检查
 
 #### 本地 Docker Compose
