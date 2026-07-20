@@ -29,7 +29,7 @@
 	},
 	"autoDownload": {
 		"enabled": false,
-		"MaxmindLicenseKey": "",
+		"maxmindLicenseKey": "",
 		"targetFilePath": "",
 		"timeout": 3,
 		"interval": 24

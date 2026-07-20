@@ -1,0 +1,29 @@
+services:
+  open-geoip:
+    build: .
+    image: open-geoip:latest
+    ports:
+      - "8080:8080"
+    environment:
+      # Required: MaxMind license key for GeoLite2 auto download
+      MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
+      # Optional overrides
+      AUTO_DOWNLOAD_ENABLED: ${AUTO_DOWNLOAD_ENABLED:-true}
+      AUTO_DOWNLOAD_INTERVAL: ${AUTO_DOWNLOAD_INTERVAL:-24}
+      AUTO_DOWNLOAD_TARGET_PATH: ${AUTO_DOWNLOAD_TARGET_PATH:-/data/}
+      AUTO_DOWNLOAD_TIMEOUT: ${AUTO_DOWNLOAD_TIMEOUT:-5}
+      HTTP_LISTEN: ${HTTP_LISTEN:-0.0.0.0:8080}
+      X_API_KEY: ${X_API_KEY:-}
+      HTTP_TRUST_PROXY: ${HTTP_TRUST_PROXY:-0.0.0.0/0,::/0}
+    volumes:
+      - open-geoip-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  open-geoip-data:

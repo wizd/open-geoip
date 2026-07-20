@@ -2,9 +2,11 @@ package models
 
 import (
 	"fmt"
-	"github.com/oschwald/geoip2-golang"
 	"net"
 	"strings"
+	"sync"
+
+	"github.com/oschwald/geoip2-golang"
 
 	"github.com/ECNU/open-geoip/g"
 	"github.com/ECNU/open-geoip/util"
@@ -33,7 +35,10 @@ type IpReader struct {
 	IpdbReader            *ipdb.City
 }
 
-var ipReader *IpReader
+var (
+	ipReader   *IpReader
+	readerLock sync.RWMutex
+)
 
 func InitReader() error {
 	ipReader = &IpReader{}
@@ -55,7 +60,7 @@ func InitReader() error {
 
 	if g.Config().Source.IPv4 == "maxmind" || g.Config().Source.IPv6 == "maxmind" {
 		if g.Config().AutoDownload.Enabled {
-			dbPath, err := util.AutoDownloadMaxmindDatabase(g.Config().AutoDownload)
+			dbPath, _, err := util.AutoDownloadMaxmindDatabase(g.Config().AutoDownload)
 			if err != nil {
 				return err
 			}
@@ -82,6 +87,28 @@ func InitReader() error {
 		ipReader.InternalMaxMindReader = db
 	}
 
+	return nil
+}
+
+// ReloadMaxMindReader closes the current MaxMind reader and opens dbPath.
+// Safe for concurrent lookups via readerLock.
+func ReloadMaxMindReader(dbPath string) error {
+	db, err := geoip2.Open(dbPath)
+	if err != nil {
+		return err
+	}
+
+	readerLock.Lock()
+	defer readerLock.Unlock()
+
+	if ipReader == nil {
+		ipReader = &IpReader{}
+	}
+	old := ipReader.MaxMindReader
+	ipReader.MaxMindReader = db
+	if old != nil {
+		_ = old.Close()
+	}
 	return nil
 }
 
@@ -114,9 +141,12 @@ func readSource(ipNet net.IP, source, language string) (ipGeo IpGeo, err error) 
 
 	switch source {
 	case "maxmind":
+		readerLock.RLock()
+		reader := ipReader.MaxMindReader
+		readerLock.RUnlock()
 
 		var record *geoip2.City
-		record, err = ipReader.MaxMindReader.City(ipNet)
+		record, err = reader.City(ipNet)
 
 		if err != nil {
 			return

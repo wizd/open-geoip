@@ -7,11 +7,13 @@ Open-GeoIP: 简单且高性能的 IP 地址地理信息查询服务
 	- [安装运行](#安装运行)
 		- [二进制直接运行](#二进制直接运行)
 		- [systemctl 托管](#systemctl-托管)
+		- [Coolify / Docker 部署](#coolify--docker-部署)
 		- [数据库自动更新](#数据库自动更新)
 			- [maxmind](#maxmind)
 		- [编译打包](#编译打包)
 		- [定制页面](#定制页面)
 	- [配置说明](#配置说明)
+		- [环境变量覆盖](#环境变量覆盖)
 	- [内部 IP 地理数据库](#内部-ip-地理数据库)
 	- [限流方案](#限流方案)
 	- [高可用与扩展性](#高可用与扩展性)
@@ -49,9 +51,45 @@ systemctl enable open-geoip
 systemctl start open-geoip
 ```
 
+### Coolify / Docker 部署
+
+项目提供 `Dockerfile`、`docker-compose.yml` 与容器默认配置 `cfg.docker.json`，可直接在 [Coolify](https://coolify.io/) 上部署。
+
+#### Coolify 操作步骤
+
+1. 新建资源，选择 **Dockerfile** 或 **Docker Compose**
+2. 连接本仓库，构建上下文为仓库根目录
+3. 在 Environment Variables 中配置（至少设置 License Key）：
+
+| 环境变量 | 必填 | 说明 |
+|----------|------|------|
+| `MAXMIND_LICENSE_KEY` | 是 | MaxMind License Key，用于自动下载 GeoLite2 |
+| `AUTO_DOWNLOAD_ENABLED` | 否 | 默认 `true`（镜像内已开启） |
+| `AUTO_DOWNLOAD_INTERVAL` | 否 | 自动更新间隔（小时），默认 `24` |
+| `AUTO_DOWNLOAD_TARGET_PATH` | 否 | 数据库目录，默认 `/data/` |
+| `AUTO_DOWNLOAD_TIMEOUT` | 否 | 下载超时（分钟），默认 `5` |
+| `HTTP_LISTEN` | 否 | 监听地址，默认 `0.0.0.0:8080` |
+| `PORT` | 否 | 若未设 `HTTP_LISTEN`，则监听 `0.0.0.0:$PORT` |
+| `X_API_KEY` | 否 | OpenAPI 的 `X-API-KEY` |
+| `HTTP_TRUST_PROXY` | 否 | 信任的反向代理，逗号分隔；默认信任全部（适配 Coolify/Traefik） |
+
+4. **持久化存储**：将卷挂载到容器内 `/data`，用于保存 `GeoLite2-City.mmdb`，避免每次重启重复下载
+5. 对外暴露端口 `8080`；健康检查路径为 `/version`
+
+#### 本地 Docker Compose
+
+```bash
+export MAXMIND_LICENSE_KEY=your_license_key
+docker compose up -d --build
+```
+
+访问 `http://localhost:8080`。首次启动会自动下载数据库（`start_period` 约 60 秒），之后按 `AUTO_DOWNLOAD_INTERVAL` 校验 checksum；有更新时热加载到内存，无需重启容器。
+
+SSO / OAuth / Redis 限流等高级配置仍通过配置文件管理；可在 Coolify 用 File Mount 覆盖 `cfg.docker.json`。
+
 ### 数据库自动更新
 #### maxmind
-如果需要自动更新 `mmdb` 数据库，只需要在[注册](https://www.maxmind.com/en/geolite2/signup)一个 `maxmind` 的账号，获得一个 [LicenseKey](https://www.maxmind.com/en/accounts/current/license-key) ，并将他配置到 `cfg.json` 中的 `AutoDownload.MaxmindLicenseKey` 中，或者配置到系统环境变量 `MAXMIND_LICENSE_KEY` 中即可。
+如果需要自动更新 `mmdb` 数据库，只需要在[注册](https://www.maxmind.com/en/geolite2/signup)一个 `maxmind` 的账号，获得一个 [LicenseKey](https://www.maxmind.com/en/accounts/current/license-key) ，并将它配置到 `cfg.json` 中的 `autoDownload.maxmindLicenseKey`，或者配置到环境变量 `MAXMIND_LICENSE_KEY` 中即可。启用 `autoDownload.enabled` 后，进程会按 `interval` 定时同步，下载成功后自动热加载，无需重启。
 
 
 ### 编译打包
@@ -100,7 +138,7 @@ chmod +x control
 	},
 	"autoDownload":{
 		"enabled":false,
-		"MaxmindLicenseKey":"",
+		"maxmindLicenseKey":"",
 		"targetFilePath":"",
 		"timeout":3,
 		"interval":24
@@ -146,10 +184,26 @@ chmod +x control
 | source.ipv6                    | string | IPv6信息的来源，可配置为 [maxmind](https://www.maxmind.com)/[qqzengip](https://www.qqzeng.com/)/[ipdb](https://www.ipip.net/) |
 | autoDownload                   | object | 一个包含自动更新数据库的设置的部分                                                                                                   |
 | autoDownload.enabled           | bool   | 是否启用自动更新数据库                                                                                                         |
-| autoDownload.MaxmindLicenseKey | string | MaxMind License Key，用于自动更新 `MaxMind GeoLite2` 数据库，也可以配置在环境变量 `MAXMIND_LICENSE_KEY` 中。如果都没有配置，那么 `maxmind` 的自动更新会报错  |
+| autoDownload.maxmindLicenseKey | string | MaxMind License Key，用于自动更新 `MaxMind GeoLite2` 数据库，也可以配置在环境变量 `MAXMIND_LICENSE_KEY` 中。如果都没有配置，那么 `maxmind` 的自动更新会报错  |
 | autoDownload.targetFilePath    | string | 自动更新数据库的目标文件路径，如果不配置此参数，默认值是 `./`，自动更新数据库会下载到这个目录                                                                   |
-| autoDownload.timeout           | number | 自动更新数据库的超时时间，单位是 second，如果不配置此参数，默认值是 3                                                                             |
+| autoDownload.timeout           | number | 自动更新数据库的超时时间，单位是 minute，如果不配置此参数，默认值是 3                                                                             |
 | autoDownload.interval          | number | 自动更新数据库的间隔时间，单位是 hour，如果不配置此参数，默认值是24                                                                               |
+
+### 环境变量覆盖
+
+以下环境变量会在加载配置文件后覆盖对应项（适用于 Coolify / Docker / systemd）：
+
+| 环境变量 | 覆盖配置项 |
+|----------|------------|
+| `MAXMIND_LICENSE_KEY` | `autoDownload.maxmindLicenseKey` |
+| `AUTO_DOWNLOAD_ENABLED` | `autoDownload.enabled`（`true`/`false`/`1`/`0`） |
+| `AUTO_DOWNLOAD_INTERVAL` | `autoDownload.interval` |
+| `AUTO_DOWNLOAD_TARGET_PATH` | `autoDownload.targetFilePath` |
+| `AUTO_DOWNLOAD_TIMEOUT` | `autoDownload.timeout` |
+| `HTTP_LISTEN` | `http.listen` |
+| `PORT` | 未设置 `HTTP_LISTEN` 时，等价于 `http.listen=0.0.0.0:$PORT` |
+| `X_API_KEY` | `http.x-api-key` |
+| `HTTP_TRUST_PROXY` | `http.trustProxy`（逗号分隔） |
 | rateLimit                      | object | 一个包含限流设置的部分                                                                                                         |
 | rateLimit.enabled              | bool   | 是否启用限流策略                                                                                                             |
 | rateLimit.minute               | number | 每分钟最多访问次, 0 表示不限制数                                                                                                           |

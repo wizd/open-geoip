@@ -3,6 +3,9 @@ package g
 import (
 	"encoding/json"
 	"log"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/toolkits/file"
@@ -194,8 +197,64 @@ func ParseConfig(cfg string) {
 		log.Fatalln("parse config file:", cfg, "fail:", err)
 	}
 
+	applyEnvOverrides(&c)
+
 	lock.Lock()
 	defer lock.Unlock()
 
 	config = &c
+}
+
+// applyEnvOverrides overlays Coolify-friendly environment variables onto config.
+// Env values take precedence over the config file.
+func applyEnvOverrides(c *GlobalConfig) {
+	if v := os.Getenv("MAXMIND_LICENSE_KEY"); v != "" {
+		c.AutoDownload.MaxmindLicenseKey = v
+	}
+	if v := os.Getenv("AUTO_DOWNLOAD_ENABLED"); v != "" {
+		c.AutoDownload.Enabled = parseEnvBool(v)
+	}
+	if v := os.Getenv("AUTO_DOWNLOAD_INTERVAL"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.AutoDownload.Interval = n
+		}
+	}
+	if v := os.Getenv("AUTO_DOWNLOAD_TARGET_PATH"); v != "" {
+		c.AutoDownload.TargetFilePath = v
+	}
+	if v := os.Getenv("AUTO_DOWNLOAD_TIMEOUT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			c.AutoDownload.Timeout = n
+		}
+	}
+	if v := os.Getenv("HTTP_LISTEN"); v != "" {
+		c.Http.Listen = v
+	} else if v := os.Getenv("PORT"); v != "" {
+		c.Http.Listen = "0.0.0.0:" + v
+	}
+	if v := os.Getenv("X_API_KEY"); v != "" {
+		c.Http.XAPIKey = v
+	}
+	if v := os.Getenv("HTTP_TRUST_PROXY"); v != "" {
+		parts := strings.Split(v, ",")
+		proxies := make([]string, 0, len(parts))
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				proxies = append(proxies, p)
+			}
+		}
+		if len(proxies) > 0 {
+			c.Http.TrustProxy = proxies
+		}
+	}
+}
+
+func parseEnvBool(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }

@@ -14,6 +14,8 @@ go-geoip
 
 # config
 *.json
+!cfg.json.example
+!cfg.docker.json
 
 # logs
 logs/*

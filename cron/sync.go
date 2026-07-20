@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/ECNU/open-geoip/g"
+	"github.com/ECNU/open-geoip/models"
 	"github.com/ECNU/open-geoip/util"
 	"github.com/toolkits/pkg/logger"
 )
@@ -21,12 +22,18 @@ func SyncMaxmindDatabase() {
 	defer t.Stop()
 
 	for {
-		_, err := util.AutoDownloadMaxmindDatabase(g.Config().AutoDownload)
+		dbPath, updated, err := util.AutoDownloadMaxmindDatabase(g.Config().AutoDownload)
 		if err != nil {
 			logger.Errorf("sync maxmind database failed %s", err)
-			continue
+		} else if updated {
+			if err := models.ReloadMaxMindReader(dbPath); err != nil {
+				logger.Errorf("reload maxmind database failed %s", err)
+			} else {
+				logger.Info("maxmind database reloaded successfully")
+			}
+		} else {
+			logger.Debug("maxmind database sync successed, no update needed")
 		}
-		logger.Debug("maxmind database sync successed")
 		<-t.C
 	}
 }

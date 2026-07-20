@@ -1,0 +1,79 @@
+{
+	"logger": {
+		"dir": "logs/",
+		"level": "INFO",
+		"keepHours": 24
+	},
+	"redis": {
+		"dsn": "127.0.0.1:6379",
+		"maxIdle": 5,
+		"connTimeout": 5,
+		"readTimeout": 5,
+		"writeTimeout": 5,
+		"password": ""
+	},
+	"internaldb": {
+		"source": "maxmind",
+		"auth": false,
+		"enabled": false,
+		"db": "internal.mmdb"
+	},
+	"db": {
+		"maxmind": "/data/GeoLite2-City.mmdb",
+		"qqzengip": "",
+		"ipdb": ""
+	},
+	"source": {
+		"ipv4": "maxmind",
+		"ipv6": "maxmind"
+	},
+	"autoDownload": {
+		"enabled": true,
+		"maxmindLicenseKey": "",
+		"targetFilePath": "/data/",
+		"timeout": 5,
+		"interval": 24
+	},
+	"rateLimit": {
+		"enabled": false,
+		"minute": 100,
+		"hour": 1000,
+		"day": 10000
+	},
+	"sso": {
+		"enabled": false,
+		"authExpire": 3600,
+		"type": "oauth2"
+	},
+	"oauth2": {
+		"enabled": false,
+		"displayName": "统一身份认证",
+		"redirectURL": "http://localhost/sso/callback/oauth2",
+		"AuthAddr": "",
+		"TokenAddr": "",
+		"UserinfoAddr": "",
+		"LogoutAddr": "",
+		"scopes": [],
+		"clientId": "",
+		"clientSecret": "",
+		"userinfoIsArray": false,
+		"userinfoPrefix": "attributes",
+		"attributes": {
+			"username": "userId",
+			"nickname": "name"
+		}
+	},
+	"http": {
+		"listen": "0.0.0.0:8080",
+		"trustProxy": ["0.0.0.0/0", "::/0"],
+		"cors": [],
+		"x-api-key": "",
+		"sessionOptions": {
+			"path": "/",
+			"domain": "",
+			"maxAge": 3600,
+			"secure": false,
+			"httpOnly": true
+		}
+	}
+}
