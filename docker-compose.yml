@@ -5,7 +5,8 @@ services:
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     environment:
-      # Required: MaxMind license key for GeoLite2 auto download
+      # Required: MaxMind credentials for GeoLite2 auto download
+      MAXMIND_ACCOUNT_ID: ${MAXMIND_ACCOUNT_ID:-}
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY:-}
       # Optional overrides
       PORT: ${PORT:-8080}

@@ -63,6 +63,7 @@ systemctl start open-geoip
 
 | 环境变量 | 必填 | 说明 |
 |----------|------|------|
+| `MAXMIND_ACCOUNT_ID` | 是 | MaxMind Account ID（账号页面可见的数字 ID） |
 | `MAXMIND_LICENSE_KEY` | 是 | MaxMind License Key，用于自动下载 GeoLite2 |
 | `AUTO_DOWNLOAD_ENABLED` | 否 | 默认 `true`（镜像内已开启） |
 | `AUTO_DOWNLOAD_INTERVAL` | 否 | 自动更新间隔（小时），默认 `24` |
@@ -79,6 +80,7 @@ systemctl start open-geoip
 #### 本地 Docker Compose
 
 ```bash
+export MAXMIND_ACCOUNT_ID=your_account_id
 export MAXMIND_LICENSE_KEY=your_license_key
 # 可选：自定义端口，例如 9090
 # export PORT=9090
@@ -91,7 +93,14 @@ SSO / OAuth / Redis 限流等高级配置仍通过配置文件管理；可在 Co
 
 ### 数据库自动更新
 #### maxmind
-如果需要自动更新 `mmdb` 数据库，只需要在[注册](https://www.maxmind.com/en/geolite2/signup)一个 `maxmind` 的账号，获得一个 [LicenseKey](https://www.maxmind.com/en/accounts/current/license-key) ，并将它配置到 `cfg.json` 中的 `autoDownload.maxmindLicenseKey`，或者配置到环境变量 `MAXMIND_LICENSE_KEY` 中即可。启用 `autoDownload.enabled` 后，进程会按 `interval` 定时同步，下载成功后自动热加载，无需重启。
+如果需要自动更新 `mmdb` 数据库，请[注册](https://www.maxmind.com/en/geolite2/signup) MaxMind 账号，并配置：
+
+- `MAXMIND_ACCOUNT_ID`（或 `autoDownload.maxmindAccountId`）：账号数字 ID
+- `MAXMIND_LICENSE_KEY`（或 `autoDownload.maxmindLicenseKey`）：[License Key](https://www.maxmind.com/en/accounts/current/license-key)
+
+启用 `autoDownload.enabled` 后，进程会按 `interval` 定时同步，下载成功后自动热加载，无需重启。
+
+> 若只配置了 License Key 而未配置 Account ID，会回退到旧版下载地址；新账号常见 `gzip: invalid header`，请同时配置 Account ID。
 
 
 ### 编译打包
@@ -140,6 +149,7 @@ chmod +x control
 	},
 	"autoDownload":{
 		"enabled":false,
+		"maxmindAccountId":"",
 		"maxmindLicenseKey":"",
 		"targetFilePath":"",
 		"timeout":3,
@@ -186,6 +196,7 @@ chmod +x control
 | source.ipv6                    | string | IPv6信息的来源，可配置为 [maxmind](https://www.maxmind.com)/[qqzengip](https://www.qqzeng.com/)/[ipdb](https://www.ipip.net/) |
 | autoDownload                   | object | 一个包含自动更新数据库的设置的部分                                                                                                   |
 | autoDownload.enabled           | bool   | 是否启用自动更新数据库                                                                                                         |
+| autoDownload.maxmindAccountId  | string | MaxMind Account ID，也可配置环境变量 `MAXMIND_ACCOUNT_ID`；与 License Key 一起用于官方下载鉴权                                      |
 | autoDownload.maxmindLicenseKey | string | MaxMind License Key，用于自动更新 `MaxMind GeoLite2` 数据库，也可以配置在环境变量 `MAXMIND_LICENSE_KEY` 中。如果都没有配置，那么 `maxmind` 的自动更新会报错  |
 | autoDownload.targetFilePath    | string | 自动更新数据库的目标文件路径，如果不配置此参数，默认值是 `./`，自动更新数据库会下载到这个目录                                                                   |
 | autoDownload.timeout           | number | 自动更新数据库的超时时间，单位是 minute，如果不配置此参数，默认值是 3                                                                             |
@@ -197,6 +208,7 @@ chmod +x control
 
 | 环境变量 | 覆盖配置项 |
 |----------|------------|
+| `MAXMIND_ACCOUNT_ID` | `autoDownload.maxmindAccountId` |
 | `MAXMIND_LICENSE_KEY` | `autoDownload.maxmindLicenseKey` |
 | `AUTO_DOWNLOAD_ENABLED` | `autoDownload.enabled`（`true`/`false`/`1`/`0`） |
 | `AUTO_DOWNLOAD_INTERVAL` | `autoDownload.interval` |
@@ -365,6 +377,6 @@ ok  	github.com/ECNU/open-geoip	7.044s
 
 - `web` 服务 —— [gin](https://github.com/gin-gonic/gin) 
 - `maxmind` 解析 —— [geoip2-golang](https://github.com/oschwald/geoip2-golang)
-- `maxming` 自动更新 —— [go-geoip](https://github.com/pieterclaerhout/go-geoip)
+- `maxmind` 自动更新 —— MaxMind 官方下载接口
 - `ipdb` 解析 —— [ipdb-go](https://github.com/ipipdotnet/ipdb-go)
 - `qqzengip` 解析 —— [qqzeng-ip](https://https://github.com/zengzhan/qqzeng-ip)

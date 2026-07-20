@@ -45,6 +45,7 @@ AutoDownloadConfig 自动下载的配置
 */
 type AutoDownloadConfig struct {
 	Enabled           bool   `json:"enabled"`
+	MaxmindAccountID  string `json:"maxmindAccountId"`
 	MaxmindLicenseKey string `json:"maxmindLicenseKey"`
 	TargetFilePath    string `json:"targetFilePath"`
 	Timeout           int    `json:"timeout"`
@@ -208,6 +209,9 @@ func ParseConfig(cfg string) {
 // applyEnvOverrides overlays Coolify-friendly environment variables onto config.
 // Env values take precedence over the config file.
 func applyEnvOverrides(c *GlobalConfig) {
+	if v := os.Getenv("MAXMIND_ACCOUNT_ID"); v != "" {
+		c.AutoDownload.MaxmindAccountID = v
+	}
 	if v := os.Getenv("MAXMIND_LICENSE_KEY"); v != "" {
 		c.AutoDownload.MaxmindLicenseKey = v
 	}
